@@ -9,7 +9,7 @@ const path = require('path');
 const cors = require('cors');
 
 // Models
-const userModel = require('./User');
+const userModel = require('./user');
 const Chat = require('./models/Chat'); // Using the Chat model we discussed earlier
 
 const app = express();
