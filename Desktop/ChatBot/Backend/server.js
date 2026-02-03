@@ -13,7 +13,7 @@ const userModel = require('./User');
 const Chat = require('./models/Chat'); // Using the Chat model we discussed earlier
 
 const app = express();
-const FLASK_URL = 'http://127.0.0.1:8000';
+const FLASK_URL = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
