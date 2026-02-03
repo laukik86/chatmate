@@ -9,3 +9,13 @@ beautifulsoup4
 urllib3
 
 
+gunicorn
+python-dotenv
+
+huggingface_hub
+langchain-groq
+langchain-community
+langchain-experimental
+sqlalchemy
+numpy
+
