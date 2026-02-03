@@ -5,28 +5,40 @@ const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const path = require('path');
 const cors = require('cors');
 
 // Models
-const userModel = require('./User');
-const Chat = require('./models/Chat'); // Using the Chat model we discussed earlier
+const userModel = require('./user');
+const Chat = require('./models/Chat'); 
 
 const app = express();
-const FLASK_URL = process.env.PORT || 5000;
+
+// --- CONFIGURATION ---
+// 1. Render assigns a port for THIS Node app to run on
+const PORT = process.env.PORT || 5000; 
+
+// 2. This is where the Python Bot lives (Local vs Production)
+const FLASK_URL = process.env.FLASK_API_URL || "http://127.0.0.1:8000";
+
+// 3. This is where your React Frontend lives
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+const MONGO_URI = process.env.MONGO_URI;
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Update CORS to allow the production Frontend
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: FRONTEND_URL, 
     credentials: true,
 }));
 
-// MongoDB Connection (Prevent duplicate connection attempts)
+// MongoDB Connection
 if (mongoose.connection.readyState === 0) {
-    mongoose.connect(process.env.MONGO_URI)
+    mongoose.connect(MONGO_URI)
         .then(() => console.log("✅ MongoDB Connected"))
         .catch(err => console.log("❌ DB Error:", err));
 }
@@ -44,12 +56,11 @@ const isLoggedIn = (req, res, next) => {
     }
 };
 
-// --- CHAT ROUTE (Consolidated) ---
+// --- CHAT ROUTE ---
 app.post('/api/chat', async (req, res) => {
     const { question, chatId } = req.body;
     
     try {
-        // 1. Find or Create Session
         let chat;
         if (chatId && mongoose.Types.ObjectId.isValid(chatId)) {
             chat = await Chat.findById(chatId);
@@ -59,16 +70,14 @@ app.post('/api/chat', async (req, res) => {
             chat = new Chat({ messages: [], userId: req.cookies.token ? jwt.verify(req.cookies.token, "secretkey").userid : null });
         }
 
-        // 2. Prepare History for Flask (Summary + last 6 messages)
         const history = [];
         if (chat.summary) {
             history.push({ role: "system", content: `Previous summary: ${chat.summary}` });
         }
-        // Get the actual message objects for Flask
         const recentMessages = chat.messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
         history.push(...recentMessages);
 
-        // 3. Call Flask for Answer
+        // Call Flask (Using the corrected URL variable)
         const response = await axios.post(`${FLASK_URL}/chat`, {
             question: question,
             history: history
@@ -76,11 +85,9 @@ app.post('/api/chat', async (req, res) => {
 
         const aiReply = response.data.reply;
 
-        // 4. Update MongoDB
         chat.messages.push({ role: 'user', content: question });
         chat.messages.push({ role: 'assistant', content: aiReply });
 
-        // 5. Trigger Summarization (Every 10 messages)
         if (chat.messages.length % 10 === 0) {
             try {
                 const summaryRes = await axios.post(`${FLASK_URL}/summarize`, {
@@ -154,29 +161,17 @@ app.post('/login', async (req, res) => {
         res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 });
-app.get('/api/chats', async (req, res) => {
-    try {
-        // Find chats and only return the ID and the first message as a "title"
-        const chats = await Chat.find({}, { _id: 1, messages: { $slice: 1 }, updatedAt: 1 })
-                                .sort({ updatedAt: -1 });
-        res.json(chats);
-    } catch (error) {
-        res.status(500).json({ error: "Could not fetch chats" });
-    }
-});
+
 app.get('/api/get-all-chats', async (req, res) => {
     try {
-        // Fetch chats, getting the ID and only the first message to use as a title
         const chats = await Chat.find({}, { _id: 1, messages: { $slice: 1 }, updatedAt: 1 })
                                 .sort({ updatedAt: -1 });
         res.json(chats);
     } catch (error) {
-        console.error("Fetch Chats Error:", error);
         res.status(500).json({ error: "Could not fetch chats" });
     }
 });
 
-// Also ensure you have a route to fetch ONE specific chat when clicked
 app.get('/api/chat/:id', async (req, res) => {
     try {
         const chat = await Chat.findById(req.params.id);
@@ -187,4 +182,5 @@ app.get('/api/chat/:id', async (req, res) => {
     }
 });
 
-app.listen(5000, () => console.log("🚀 Node Server running on port 5000"));
+// LISTEN ON THE DYNAMIC PORT
+app.listen(PORT, () => console.log(`🚀 Node Server running on port ${PORT}`));
