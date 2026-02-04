@@ -14,48 +14,59 @@ const Chat = require('./models/Chat');
 const app = express();
 
 // --- CONFIGURATION ---
-// 1. Render assigns a port for THIS Node app to run on
-const PORT = process.env.PORT || 5000; 
-
-// 2. This is where the Python Bot lives (Local vs Production)
+// const PORT = process.env.PORT || 5000; 
+const PORT = process.env.PORT ||5000; 
 const FLASK_URL = process.env.FLASK_API_URL || "http://127.0.0.1:8000";
-
-// 3. This is where your React Frontend lives
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-
 const MONGO_URI = process.env.MONGO_URI;
+//const MONGO_URI ="mongodb+srv://laukik:laukik@cluster0.ycz62gh.mongodb.net/"
+const JWT_SECRET = process.env.JWT_SECRET || "secretkey"; // Use env variable for security
+
+require('dotenv').config();
+console.log("MONGO_URI =", process.env.MONGO_URI);
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Update CORS to allow the production Frontend
+// CORS Configuration - Crucial for Vercel <-> Render
 app.use(cors({
     origin: FRONTEND_URL, 
+    
     credentials: true,
+    
 }));
 
-// MongoDB Connection
-// Replace your current MongoDB Connection block with this:
-if (!MONGO_URI) {
-    console.error("❌ ERROR: MONGO_URI is missing from environment variables!");
-    process.exit(1); // Stop the server if there is no DB to connect to
-}
+// --- MONGODB CONNECTION (Optimized) ---
+const connectDB = async () => {
+    if (!MONGO_URI) {
+        console.error("❌ ERROR: MONGO_URI is missing from environment variables!");
+        return;
+    }
 
-mongoose.connect(MONGO_URI)
-    .then(() => console.log("✅ MongoDB Connected Successfully"))
-    .catch(err => {
-        console.error("❌ MongoDB Connection Error Details:");
-        console.error(err);
-    });
+    // Check if already connected to prevent the "active connection" error
+    if (mongoose.connection.readyState >= 1) {
+        return;
+    }
+
+    try {
+        await mongoose.connect(MONGO_URI);
+        console.log("✅ MongoDB Connected Successfully to Atlas");
+    } catch (err) {
+        console.error("❌ MongoDB Connection Error:");
+        console.error(err.message);
+    }
+};
+
+connectDB();
 
 // --- AUTHENTICATION MIDDLEWARE ---
 const isLoggedIn = (req, res, next) => {
     const token = req.cookies.token;
     if (!token) return res.status(401).json({ error: "Please login" });
     try {
-        const data = jwt.verify(token, "secretkey");
+        const data = jwt.verify(token, JWT_SECRET);
         req.user = data;
         next();
     } catch (err) {
@@ -74,7 +85,14 @@ app.post('/api/chat', async (req, res) => {
         }
         
         if (!chat) {
-            chat = new Chat({ messages: [], userId: req.cookies.token ? jwt.verify(req.cookies.token, "secretkey").userid : null });
+            let userId = null;
+            if (req.cookies.token) {
+                try {
+                    const decoded = jwt.verify(req.cookies.token, JWT_SECRET);
+                    userId = decoded.userid;
+                } catch (e) { /* ignore invalid token */ }
+            }
+            chat = new Chat({ messages: [], userId: userId });
         }
 
         const history = [];
@@ -84,14 +102,12 @@ app.post('/api/chat', async (req, res) => {
         const recentMessages = chat.messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
         history.push(...recentMessages);
 
-        // Call Flask (Using the corrected URL variable)
         const response = await axios.post(`${FLASK_URL}/chat`, {
             question: question,
             history: history
         });
 
         const aiReply = response.data.reply;
-
         chat.messages.push({ role: 'user', content: question });
         chat.messages.push({ role: 'assistant', content: aiReply });
 
@@ -102,12 +118,11 @@ app.post('/api/chat', async (req, res) => {
                 });
                 chat.summary = summaryRes.data.summary;
             } catch (sErr) {
-                console.error("Summarization failed, but continuing...");
+                console.error("Summarization failed");
             }
         }
 
         await chat.save();
-
         res.json({
             reply: aiReply,
             chatId: chat._id,
@@ -141,17 +156,27 @@ app.post('/api/update-record', async (req, res) => {
 
 // --- AUTH ROUTES ---
 app.post('/register', async (req, res) => {
-    let { name, email, username, password } = req.body;
-    let user = await userModel.findOne({ email });
-    if (user) return res.status(400).send('User already exists');
+    try {
+        let { name, email, username, password } = req.body;
+        let user = await userModel.findOne({ email });
+        if (user) return res.status(400).json({ error: 'User already exists' });
 
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(password, salt);
-    
-    const newUser = await userModel.create({ name, email, username, password: hash });
-    let token = jwt.sign({ email: email, userid: newUser._id }, "secretkey");
-    res.cookie("token", token);
-    res.json({ success: true, userId: newUser._id });
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(password, salt);
+        
+        const newUser = await userModel.create({ name, email, username, password: hash });
+        let token = jwt.sign({ email: email, userid: newUser._id }, JWT_SECRET);
+        
+        // Secure cookie settings for production
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: true, // Required for HTTPS on Render/Vercel
+            sameSite: 'None' // Allows cross-site cookies
+        });
+        res.json({ success: true, userId: newUser._id });
+    } catch (err) {
+        res.status(500).json({ error: "Registration failed" });
+    }
 });
 
 app.post('/login', async (req, res) => {
@@ -161,8 +186,13 @@ app.post('/login', async (req, res) => {
 
     const match = await bcrypt.compare(password, user.password);
     if (match) {
-        let token = jwt.sign({ username: username, userid: user._id }, "secretkey");
-        res.cookie("token", token);
+        let token = jwt.sign({ username: username, userid: user._id }, JWT_SECRET);
+        
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'None'
+        });
         res.json({ success: true, username: user.username });
     } else {
         res.status(401).json({ success: false, message: "Invalid credentials" });
@@ -189,5 +219,4 @@ app.get('/api/chat/:id', async (req, res) => {
     }
 });
 
-// LISTEN ON THE DYNAMIC PORT
 app.listen(PORT, () => console.log(`🚀 Node Server running on port ${PORT}`));
