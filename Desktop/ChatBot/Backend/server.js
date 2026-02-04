@@ -37,11 +37,18 @@ app.use(cors({
 }));
 
 // MongoDB Connection
-if (mongoose.connection.readyState === 0) {
-    mongoose.connect(MONGO_URI)
-        .then(() => console.log("✅ MongoDB Connected"))
-        .catch(err => console.log("❌ DB Error:", err));
+// Replace your current MongoDB Connection block with this:
+if (!MONGO_URI) {
+    console.error("❌ ERROR: MONGO_URI is missing from environment variables!");
+    process.exit(1); // Stop the server if there is no DB to connect to
 }
+
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("✅ MongoDB Connected Successfully"))
+    .catch(err => {
+        console.error("❌ MongoDB Connection Error Details:");
+        console.error(err);
+    });
 
 // --- AUTHENTICATION MIDDLEWARE ---
 const isLoggedIn = (req, res, next) => {
