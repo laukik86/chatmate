@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import ChatHistory from './ChatHistory';
 import { Send, LogOut, LogIn, UserPlus, Sparkles } from 'lucide-react';
 
+// Use the VITE_ prefix for environment variables in Vite
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 export default function Start() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
@@ -17,19 +20,18 @@ export default function Start() {
     }
   }, []);
 
-  const handleLogin = () => {
-    navigate('/login');
-  };
-
-  const handleRegister = () => {
-    navigate('/register');
-  };
+  const handleLogin = () => navigate('/login');
+  const handleRegister = () => navigate('/register');
 
   const handleLogout = async () => {
-    await fetch('http://localhost:5000/logout', {
-      method: 'GET',
-      credentials: 'include',
-    });
+    try {
+      await fetch(`${API_BASE_URL}/logout`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Logout request failed:', err);
+    }
     localStorage.removeItem('username');
     setUsername('');
     navigate('/login');
@@ -40,19 +42,30 @@ export default function Start() {
     if (!query.trim()) return;
     
     setIsLoading(true);
+    setResponse(''); // Clear previous response
+    
     try {
-      const res = await fetch('http://localhost:5000/api/chat', {
+      // Changed 'query' to 'question' to match your server.js
+      const res = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ question: query }), 
       });
+
       const data = await res.json();
-      setResponse(data.answer || JSON.stringify(data));
+      
+      if (res.ok) {
+        // Your server.js returns { reply: "..." }
+        setResponse(data.reply || "No response received.");
+      } else {
+        setResponse(data.error || "Something went wrong.");
+      }
     } catch (err) {
       console.error('Error communicating with backend:', err);
-      setResponse('Server error. Please try again.');
+      setResponse('Server error. Please ensure the backend is running.');
     } finally {
       setIsLoading(false);
+      setQuery(''); // Optional: clear input after send
     }
   };
 
@@ -65,7 +78,6 @@ export default function Start() {
 
       {/* Main Content */}
       <div className='flex flex-col flex-1 relative'>
-        {/* Gradient Overlay */}
         <div className='absolute inset-0 bg-gradient-to-b from-blue-500/5 via-transparent to-purple-500/5 pointer-events-none' />
         
         {/* Header */}
@@ -98,17 +110,11 @@ export default function Start() {
               </>
             ) : (
               <>
-                <button
-                  onClick={handleLogin}
-                  className='flex items-center space-x-2 px-5 py-2 rounded-full border border-slate-700 bg-slate-800/50 hover:bg-slate-800 transition-all duration-300 hover:border-slate-600'
-                >
+                <button onClick={handleLogin} className='flex items-center space-x-2 px-5 py-2 rounded-full border border-slate-700 bg-slate-800/50 hover:bg-slate-800 transition-all duration-300 hover:border-slate-600'>
                   <LogIn className='w-4 h-4' />
                   <span className='text-sm font-medium'>Login</span>
                 </button>
-                <button
-                  onClick={handleRegister}
-                  className='flex items-center space-x-2 px-5 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-all duration-300 shadow-lg shadow-blue-500/20'
-                >
+                <button onClick={handleRegister} className='flex items-center space-x-2 px-5 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-all duration-300 shadow-lg shadow-blue-500/20'>
                   <UserPlus className='w-4 h-4' />
                   <span className='text-sm font-medium'>Sign Up</span>
                 </button>
@@ -127,9 +133,7 @@ export default function Start() {
               <h2 className='text-4xl font-bold mb-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent'>
                 How can I help you today?
               </h2>
-              <p className='text-slate-400 text-lg'>
-                Ask me anything and I'll do my best to assist you
-              </p>
+              <p className='text-slate-400 text-lg'>Ask me anything and I'll do my best to assist you</p>
             </div>
           )}
 
@@ -142,7 +146,7 @@ export default function Start() {
                   </div>
                   <h3 className='font-semibold text-lg text-blue-400'>AI Response</h3>
                 </div>
-                <p className='text-slate-200 leading-relaxed pl-11'>{response}</p>
+                <p className='text-slate-200 leading-relaxed pl-11 whitespace-pre-wrap'>{response}</p>
               </div>
             </div>
           )}
@@ -182,18 +186,10 @@ export default function Start() {
 
       <style jsx>{`
         @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out;
-        }
+        .animate-fade-in { animation: fade-in 0.5s ease-out; }
       `}</style>
     </div>
   );

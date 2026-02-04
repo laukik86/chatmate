@@ -2,37 +2,40 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { Search, Save, Database, Loader2 } from 'lucide-react';
 
+// Use the VITE_ prefix for environment variables
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const EditDatabase = () => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [updatingId, setUpdatingId] = useState(null);
 
-    // 1. Fetch the Top 5 results from the database
+    // 1. Fetch results from the database
     const handleSearch = async (e) => {
         e.preventDefault();
         if (!query) return;
 
         setLoading(true);
         try {
-            // This calls your Node.js backend
-            const response = await axios.post('/api/get-records', { query });
+            // Updated to use production URL
+            const response = await axios.post(`${API_BASE_URL}/api/get-records`, { query });
             setResults(response.data.results || []);
         } catch (error) {
             console.error("Error fetching data:", error);
-            alert("Failed to fetch records. Check if Flask and Node are running.");
+            alert("Failed to fetch records. Make sure the Render backend and Flask service are linked.");
         } finally {
             setLoading(false);
         }
     };
 
-    // 2. Update a specific record in Pinecone
+    // 2. Update a specific record
     const handleUpdate = async (id, newText) => {
         setUpdatingId(id);
         try {
-            // This calls your Node.js backend
-            await axios.post('/api/update-record', { id, new_text: newText });
-            alert("Record updated successfully in Pinecone!");
+            // Updated to use production URL
+            await axios.post(`${API_BASE_URL}/api/update-record`, { id, new_text: newText });
+            alert("Record updated successfully!");
         } catch (error) {
             console.error("Update failed:", error);
             alert("Failed to update record.");
@@ -45,7 +48,7 @@ const EditDatabase = () => {
         <div style={{ maxWidth: '800px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                 <Database size={32} color="#2563eb" />
-                <h1>Vector Database Editor</h1>
+                <h1 style={{ color: '#f8fafc' }}>Vector Database Editor</h1>
             </div>
 
             {/* Search Bar */}
@@ -55,38 +58,76 @@ const EditDatabase = () => {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search for content to edit (e.g. 'M.Tech Eligibility')..."
-                    style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ccc', fontSize: '16px' }}
+                    style={{ 
+                        flex: 1, 
+                        padding: '12px', 
+                        borderRadius: '8px', 
+                        border: '1px solid #334155', 
+                        fontSize: '16px',
+                        backgroundColor: '#1e293b',
+                        color: 'white' 
+                    }}
                 />
                 <button 
                     type="submit" 
                     disabled={loading}
-                    style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    style={{ 
+                        padding: '10px 20px', 
+                        backgroundColor: '#2563eb', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '8px', 
+                        cursor: 'pointer', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '5px' 
+                    }}
                 >
                     {loading ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
                     Search
                 </button>
             </form>
 
-            <hr style={{ border: '0', borderTop: '1px solid #eee', marginBottom: '30px' }} />
+            <hr style={{ border: '0', borderTop: '1px solid #334155', marginBottom: '30px' }} />
 
             {/* Results List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {results.length === 0 && !loading && (
-                    <p style={{ textAlign: 'center', color: '#666' }}>Search above to find and edit database chunks.</p>
+                    <p style={{ textAlign: 'center', color: '#94a3b8' }}>Search above to find and edit database chunks.</p>
                 )}
 
                 {results.map((item) => (
-                    <div key={item.id} style={{ padding: '20px', border: '1px solid #e5e7eb', borderRadius: '12px', backgroundColor: '#f9fafb' }}>
+                    <div key={item.id} style={{ 
+                        padding: '20px', 
+                        border: '1px solid #334155', 
+                        borderRadius: '12px', 
+                        backgroundColor: '#0f172a' 
+                    }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>ID: {item.id}</span>
-                            <span style={{ fontSize: '12px', color: '#10b981' }}>Similarity: {(item.score * 100).toFixed(1)}%</span>
+                            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>
+                                ID: {item.id}
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#10b981' }}>
+                                Similarity: {(item.score * 100).toFixed(1)}%
+                            </span>
                         </div>
                         
                         <textarea
                             id={`text-${item.id}`}
                             defaultValue={item.current_text}
                             rows={5}
-                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px', lineHeight: '1.5', marginBottom: '10px', boxSizing: 'border-box' }}
+                            style={{ 
+                                width: '100%', 
+                                padding: '10px', 
+                                borderRadius: '6px', 
+                                border: '1px solid #334155', 
+                                fontSize: '14px', 
+                                lineHeight: '1.5', 
+                                marginBottom: '10px', 
+                                boxSizing: 'border-box',
+                                backgroundColor: '#1e293b',
+                                color: '#e2e8f0'
+                            }}
                         />
 
                         <button
@@ -97,7 +138,7 @@ const EditDatabase = () => {
                                 alignItems: 'center', 
                                 gap: '8px', 
                                 padding: '8px 16px', 
-                                backgroundColor: updatingId === item.id ? '#9ca3af' : '#059669', 
+                                backgroundColor: updatingId === item.id ? '#475569' : '#059669', 
                                 color: 'white', 
                                 border: 'none', 
                                 borderRadius: '6px', 
